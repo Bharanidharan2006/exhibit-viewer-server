@@ -1,8 +1,10 @@
 const mongoose = require("mongoose");
 
 const slotSchema = new mongoose.Schema({
-  slotName: { type: String, required: true }, // e.g. "SLOT_1"
+  slotName: { type: String, required: true }, // e.g. "SLOT_1" or "SLOT_P_1"
+  slotType: { type: String, enum: ["image", "model3d"], default: "image" },
   imageUrl: { type: String, default: null }, // path served from /uploads/
+  modelUrl: { type: String, default: null }, // GLB/GLTF file path for 3D products
   title: { type: String, default: "" },
   artist: { type: String, default: "" },
   description: { type: String, default: "" },

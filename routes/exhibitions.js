@@ -19,12 +19,20 @@ const storage = multer.diskStorage({
   },
 });
 
+// Accept images AND 3D model files (GLB/GLTF)
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_MODEL_EXTS = [".glb", ".gltf"];
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB (3D models can be large)
   fileFilter: (_, file, cb) => {
-    if (file.mimetype.startsWith("image/")) cb(null, true);
-    else cb(new Error("Only image files allowed"));
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (file.mimetype.startsWith("image/") || ALLOWED_MODEL_EXTS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image and GLB/GLTF files are allowed"));
+    }
   },
 });
 
@@ -90,12 +98,52 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────
+   GET /api/exhibitions/:id/slots/:slotName
+   Public endpoint — returns a single slot's data
+   for the AR product preview (no auth required)
+───────────────────────────────────────────── */
+router.get("/:id/slots/:slotName", async (req, res) => {
+  try {
+    const exhibition = await Exhibition.findById(req.params.id)
+      .populate("owner", "name");
+    if (!exhibition)
+      return res.status(404).json({ message: "Exhibition not found" });
+
+    const slot = exhibition.slots.find(
+      (s) => s.slotName === req.params.slotName,
+    );
+    if (!slot)
+      return res.status(404).json({ message: "Slot not found" });
+
+    res.json({
+      slotName: slot.slotName,
+      slotType: slot.slotType,
+      modelUrl: slot.modelUrl,
+      imageUrl: slot.imageUrl,
+      title: slot.title,
+      artist: slot.artist,
+      description: slot.description,
+      price: slot.price,
+      medium: slot.medium,
+      dimensions: slot.dimensions,
+      year: slot.year,
+      likes: slot.likes,
+      exhibitionName: exhibition.name,
+      ownerName: exhibition.owner?.name,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* ─────────────────────────────────────────────
    POST /api/exhibitions
    Create a new exhibition (business only)
 ───────────────────────────────────────────── */
 router.post("/", protect, businessOnly, async (req, res) => {
   try {
-    const { name, description, modelTemplate, slotCount } = req.body;
+    const { name, description, modelTemplate, slotCount, productSlotCount } = req.body;
 
     if (!name || !modelTemplate || !slotCount) {
       return res
@@ -103,10 +151,14 @@ router.post("/", protect, businessOnly, async (req, res) => {
         .json({ message: "name, modelTemplate and slotCount are required" });
     }
 
-    // Pre-create empty slots so the client knows which ones to fill
-    const slots = Array.from({ length: Number(slotCount) }, (_, i) => ({
-      slotName: `SLOT_${i + 1}`,
-    }));
+    // Pre-create empty slots: SLOT_n for images, SLOT_P_n for 3D products
+    const slots = [];
+    for (let i = 1; i <= Number(slotCount); i++) {
+      slots.push({ slotName: `SLOT_${i}`, slotType: "image" });
+    }
+    for (let i = 1; i <= Number(productSlotCount || 0); i++) {
+      slots.push({ slotName: `SLOT_P_${i}`, slotType: "model3d" });
+    }
 
     const exhibition = await Exhibition.create({
       owner: req.user._id,
@@ -132,7 +184,7 @@ router.post(
   "/:id/slots/:slotName/upload",
   protect,
   businessOnly,
-  upload.single("image"),
+  upload.fields([{ name: "image", maxCount: 1 }, { name: "model", maxCount: 1 }]),
   async (req, res) => {
     try {
       const exhibition = await Exhibition.findOne({
@@ -147,19 +199,36 @@ router.post(
       );
       if (!slot) return res.status(404).json({ message: "Slot not found" });
 
-      // Update image URL if a file was uploaded
-      if (req.file) {
-        // Delete old file if it exists
+      // Handle image upload
+      const imageFile = req.files?.image?.[0];
+      if (imageFile) {
         if (slot.imageUrl) {
           const oldPath = path.join(uploadDir, path.basename(slot.imageUrl));
           if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         }
-        slot.imageUrl = `/uploads/${req.file.filename}`;
+        slot.imageUrl = `/uploads/${imageFile.filename}`;
+      }
+
+      // Handle 3D model upload
+      const modelFile = req.files?.model?.[0];
+      if (modelFile) {
+        if (slot.modelUrl) {
+          const oldPath = path.join(uploadDir, path.basename(slot.modelUrl));
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+        slot.modelUrl = `/uploads/${modelFile.filename}`;
+        slot.slotType = "model3d";
+      }
+
+      // Auto-detect slot type from slot name convention
+      if (slot.slotName.startsWith("SLOT_P_")) {
+        slot.slotType = "model3d";
       }
 
       // Update metadata fields
-      const { title, artist, description, price, medium, dimensions, year } =
+      const { title, artist, description, price, medium, dimensions, year, slotType } =
         req.body;
+      if (slotType !== undefined) slot.slotType = slotType;
       if (title !== undefined) slot.title = title;
       if (artist !== undefined) slot.artist = artist;
       if (description !== undefined) slot.description = description;
@@ -169,7 +238,7 @@ router.post(
       if (year !== undefined) slot.year = Number(year);
 
       await exhibition.save();
-      res.json({ slot, imageUrl: slot.imageUrl });
+      res.json({ slot, imageUrl: slot.imageUrl, modelUrl: slot.modelUrl });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });
