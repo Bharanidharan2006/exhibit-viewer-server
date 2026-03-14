@@ -27,6 +27,10 @@ const exhibitionSchema = new mongoose.Schema(
     modelTemplate: { type: String, required: true }, // matches a key in GALLERY_TEMPLATES on client
     slots: [slotSchema],
     isPublished: { type: Boolean, default: false },
+    aiShopkeeper: {
+      enabled: { type: Boolean, default: false },
+      exhibitionStory: { type: String, default: "" },
+    },
   },
   { timestamps: true },
 );

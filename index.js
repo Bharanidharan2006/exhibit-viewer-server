@@ -8,6 +8,7 @@ const { Server } = require("socket.io");
 
 const authRoutes = require("./routes/auth");
 const exhibitionRoutes = require("./routes/exhibitions");
+const chatRoutes = require("./routes/chat");
 
 const app = express();
 const server = http.createServer(app);
@@ -15,21 +16,31 @@ const server = http.createServer(app);
 /* ── Socket.io ── */
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: true, // Automatically allow the requesting origin (e.g. ngrok domains or local)
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
 /* ── Middleware ── */
-app.use(cors());
+app.use(
+  cors({
+    origin: true, // Automatically reflect request origin
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Serve uploaded images as static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Serve shopkeeper model and other public assets
+app.use("/public", express.static(path.join(__dirname, "public")));
+
 /* ── Routes ── */
 app.use("/api/auth", authRoutes);
 app.use("/api/exhibitions", exhibitionRoutes);
+app.use("/api/chat", chatRoutes);
 
 /* ── Socket.io Presence Logic ── */
 // Track visitors per exhibition room

@@ -143,7 +143,7 @@ router.get("/:id/slots/:slotName", async (req, res) => {
 ───────────────────────────────────────────── */
 router.post("/", protect, businessOnly, async (req, res) => {
   try {
-    const { name, description, modelTemplate, slotCount, productSlotCount } = req.body;
+    const { name, description, modelTemplate, slotCount, productSlotCount, aiShopkeeper } = req.body;
 
     if (!name || !modelTemplate || !slotCount) {
       return res
@@ -166,6 +166,7 @@ router.post("/", protect, businessOnly, async (req, res) => {
       description,
       modelTemplate,
       slots,
+      aiShopkeeper: aiShopkeeper || { enabled: false, exhibitionStory: "" },
     });
 
     res.status(201).json(exhibition);
