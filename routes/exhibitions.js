@@ -290,5 +290,37 @@ router.post("/:id/slots/:slotName/like", protect, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+/* ─────────────────────────────────────────────
+   DELETE /api/exhibitions/:id
+   Delete an exhibition and its uploaded files
+───────────────────────────────────────────── */
+router.delete("/:id", protect, businessOnly, async (req, res) => {
+  try {
+    const exhibition = await Exhibition.findOne({
+      _id: req.params.id,
+      owner: req.user._id,
+    });
+    if (!exhibition)
+      return res.status(404).json({ message: "Exhibition not found" });
+
+    // Delete uploaded files
+    for (const slot of exhibition.slots) {
+      if (slot.imageUrl) {
+        const p = path.join(uploadDir, path.basename(slot.imageUrl));
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+      if (slot.modelUrl) {
+        const p = path.join(uploadDir, path.basename(slot.modelUrl));
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+    }
+
+    await Exhibition.findByIdAndDelete(req.params.id);
+    res.json({ message: "Exhibition deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 module.exports = router;

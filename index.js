@@ -15,14 +15,13 @@ const server = http.createServer(app);
 /* ── Socket.io ── */
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: "*",
     methods: ["GET", "POST"],
-    credentials: true,
   },
 });
 
 /* ── Middleware ── */
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors());
 app.use(express.json());
 
 // Serve uploaded images as static files
